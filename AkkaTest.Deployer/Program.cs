@@ -7,10 +7,6 @@ namespace AkkaTest.Deployer
 {
     class Program
     {
-        class SayHello
-        {
-        }
-
         class HelloActor : ReceiveActor
         {
             private IActorRef _remoteActor;
@@ -21,9 +17,10 @@ namespace AkkaTest.Deployer
             {
                 _remoteActor = remoteActor;
                 Context.Watch(_remoteActor);
-                Receive<Ping>(hello => { Console.WriteLine("Received {1} from {0}", Sender, hello.Message); });
 
-                Receive<SayHello>(sayHello => { _remoteActor.Tell(new Pong("hello" + _helloCounter++)); });
+                Receive<Ping>(hello => { Console.WriteLine("Received {1} from {0}", Sender, hello); });
+
+                Receive<Pong>(sayHello => { _remoteActor.Tell("hello" + _helloCounter++); });
 
                 Receive<Terminated>(terminated =>
                 {
@@ -36,7 +33,7 @@ namespace AkkaTest.Deployer
             protected override void PreStart()
             {
                 _helloTask = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(TimeSpan.FromSeconds(1),
-                    TimeSpan.FromSeconds(1), Context.Self, new SayHello(), ActorRefs.NoSender);
+                    TimeSpan.FromSeconds(1), Context.Self, "hi, hello!", ActorRefs.NoSender);
             }
 
             protected override void PostStop()
@@ -49,35 +46,42 @@ namespace AkkaTest.Deployer
         {
             using (var system = ActorSystem.Create("Deployer", ConfigurationFactory.ParseString(@"
                 akka {  
-                    actor{
+                    log-config-on-start = on
+                    stdout-loglevel = DEBUG
+                    loglevel = DEBUG
+                    actor {
                         provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
+                        debug {  
+                          receive = on 
+                          autoreceive = on
+                          lifecycle = on
+                          event-stream = on
+                          unhandled = on
+                        }
                         deployment {
-                            /remoteecho {
-                                remote = ""akka.tcp://DeployTarget@192.168.197.42:8099""
+                            /remote-echo {
+                                router = round-robin-pool
+                                nr-of-instances = 5
+                                remote = ""akka.tcp://DeployTarget@localhost:8080""
                             }
                         }
                     }
                     remote {
-                        helios.tcp {
-                            port = 0
+                        dot-netty.tcp {
+                            port = 8090
                             hostname = localhost
                         }
                     }
                 }")))
             {
-                var remoteAddress = Address.Parse("akka.tcp://DeployTarget@192.168.197.42:8099");
-                var remoteEcho1 =
-                    system.ActorOf(Props.Create(() => new GreetingActor()), "remoteecho"); //deploy remotely via config
-                var remoteEcho2 =
-                    system.ActorOf(
-                        Props.Create(() => new GreetingActor())
-                            .WithDeploy(Deploy.None.WithScope(new RemoteScope(remoteAddress))),
-                        "coderemoteecho"); //deploy remotely via code
+                var remoteAddress = Address.Parse("akka.tcp://DeployTarget@localhost:8080");
+                var remoteEcho1 = system.ActorOf(Props.Create(() => new GreetingActor()), "remote-echo");
+                var remoteEcho2 = system.ActorOf(Props.Create(() => new GreetingActor()).WithDeploy(Deploy.None.WithScope(new RemoteScope(remoteAddress))), "code-remote-echo");
 
                 system.ActorOf(Props.Create(() => new HelloActor(remoteEcho1)));
                 system.ActorOf(Props.Create(() => new HelloActor(remoteEcho2)));
 
-                system.ActorSelection("/user/remoteecho").Tell(new Ping("hi from selection!"));
+                // system.ActorSelection("/user/remote-echo").Tell("hi from selection!");
 
                 Console.ReadKey();
             }
