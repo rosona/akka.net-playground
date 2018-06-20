@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using Akka.Actor;
 using Akka.Configuration;
 using Akka.Routing;
@@ -17,12 +18,22 @@ namespace AkkaTest.Cluster.Client
                         deployment {
                             /greeting {
                                 router = round-robin-pool # routing strategy
-                                nr-of-instances = 10 # max number of total routees
+                                nr-of-instances = 1 # max number of total routees
                                 cluster {
                                     enabled = on
-                                    allow-local-routees = on
+                                    allow-local-routees = off
                                     use-role = server
-                                    max-nr-of-instances-per-node = 1
+                                    max-nr-of-instances-per-node = 10
+                                }
+                            }
+                            /testing {
+                                router = round-robin-pool # routing strategy
+                                nr-of-instances = 1 # max number of total routees
+                                cluster {
+                                    enabled = on
+                                    allow-local-routees = off
+                                    use-role = server
+                                    max-nr-of-instances-per-node = 2
                                 }
                             }
                         }
@@ -55,8 +66,9 @@ namespace AkkaTest.Cluster.Client
                 var greeting = system.ActorOf(Props.Create<GreetingActor>().WithRouter(FromConfig.Instance), "greeting");
                 while (true)
                 {
-                    var message = Console.ReadLine();
-                    greeting.Tell(new Ping(message), system.ActorOf(Props.Create<GreetingActor>()));
+                    // var message = Console.ReadLine();
+                    greeting.Tell(new Ping("test"), system.ActorOf(Props.Create<GreetingActor>()));
+                    Thread.Sleep(1000);
                 }
             }
         }
